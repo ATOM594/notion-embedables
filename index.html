@@ -38,7 +38,7 @@
     }
 
     .timer {
-      width: 5.8ch;
+      min-width: 5.8ch;
       border: 1px solid transparent;
       border-radius: 8px;
       padding: 2px 4px;
@@ -116,6 +116,19 @@
     let isEditing = false;
     let skipBlurCommit = false;
 
+    // URL params: ?hours=1&days=1
+    const params = new URLSearchParams(window.location.search);
+
+    function paramOn(keys) {
+      return keys.some(k => {
+        const v = params.get(k);
+        return v === '1' || v === 'true';
+      });
+    }
+
+    const showDays = paramOn(['days','day','d']);
+    const showHours = showDays || paramOn(['hours','hour','h']);
+
     function isDigits(text) {
       if (text.length === 0) return false;
       for (const ch of text) {
@@ -130,10 +143,23 @@
 
     function format(sec) {
       const safe = Math.max(0, Math.floor(sec));
-      const m = Math.floor(safe / 60);
-      const s = safe % 60;
-      return `${pad(m)}:${pad(s)}`;
-    }
+      const days = Math.floor(safe / 86400);
+      const hours = Math.floor((safe % 86400) / 3600);
+      const minutes = Math.floor((safe % 3600) / 60);
+      const seconds = safe % 60;
+
+      if (showDays) {
+        return `${pad(days)}:${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+      }
+
+      if (showHours) {
+        const totalHours = Math.floor(safe / 3600);
+        return `${pad(totalHours)}:${pad(minutes)}:${pad(seconds)}`;
+      }
+
+      const totalMinutes = Math.floor(safe / 60);
+      return `${pad(totalMinutes)}:${pad(seconds)}`;
+        }
 
     function parse(text) {
       const raw = String(text).trim();
@@ -265,14 +291,13 @@
       }
     });
 
-        timerEl.addEventListener('blur', () => {
+    timerEl.addEventListener('blur', () => {
       if (skipBlurCommit) {
         skipBlurCommit = false;
       } else {
         cancelEdit();
       }
 
-      // Clear any text selection + caret
       const sel = window.getSelection();
       if (sel) sel.removeAllRanges();
     });
@@ -302,3 +327,4 @@
   </script>
 </body>
 </html>
+
