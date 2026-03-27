@@ -1,63 +1,306 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-body {
-  font-family: sans-serif;
-  text-align: center;
-}
-#timer {
-  font-size: 48px;
-  margin-top: 10px;
-}
-input {
-  font-size: 16px;
-  padding: 5px;
-  width: 80px;
-}
-button {
-  padding: 6px 10px;
-  margin-left: 5px;
-}
-</style>
-</head>
-<body>
-
-<div>
-  <input id="minutesInput" type="number" placeholder="Minutes" value=10>
-  <button onclick="startTimer()">Start</button>
-</div>
-
-<div id="timer">00:00</div>
-
-<script>
-let interval;
-
-function startTimer() {
-  clearInterval(interval);
-
-  let minutes = document.getElementById("minutesInput").value;
-  let time = minutes * 60;
-
-  const timerEl = document.getElementById("timer");
-
-  interval = setInterval(() => {
-    let m = Math.floor(time / 60);
-    let s = time % 60;
-
-    s = s < 10 ? "0" + s : s;
-    m = m < 10 ? "0" + m : m;
-
-    timerEl.textContent = `${m}:${s}`;
-
-    if (time <= 0) {
-      clearInterval(interval);
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Countdown Timer</title>
+  <style>
+    :root {
+      --panel: #ffffff;
+      --text: #111111;
+      --border: #e5e7eb;
+      --accent: #111111;
+      --focus: rgba(17, 17, 17, 0.05);
     }
 
-    time--;
-  }, 1000);
-}
-</script>
+    * { box-sizing: border-box; }
 
+    html, body {
+      margin: 0;
+      background: transparent;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 4px;
+    }
+
+    .card {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 6px;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+    }
+
+    .timer {
+      width: 5.8ch;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 2px 4px;
+      text-align: center;
+      font: inherit;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--text);
+      background: transparent;
+      outline: none;
+      caret-color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+      min-height: 28px;
+    }
+
+    .timer:focus {
+      background: var(--focus);
+      border-color: var(--border);
+    }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      width: 28px;
+      height: 28px;
+      background: var(--accent);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      flex: 0 0 auto;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button:focus-visible,
+    .timer:focus-visible {
+      outline: 2px solid rgba(17, 17, 17, 0.18);
+      outline-offset: 2px;
+    }
+
+    svg {
+      width: 12px;
+      height: 12px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="timer" id="timer" contenteditable="true" aria-label="Countdown timer">10:00</div>
+
+    <button id="startBtn" aria-label="Start" type="button">
+      <svg id="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M8 5.5L19 12L8 18.5V5.5Z" />
+      </svg>
+    </button>
+  </div>
+
+  <script>
+    const timerEl = document.getElementById('timer');
+    const btn = document.getElementById('startBtn');
+    const icon = document.getElementById('icon');
+
+    let total = 600;
+    let remaining = total;
+    let running = false;
+    let interval = null;
+    let isEditing = false;
+    let skipBlurCommit = false;
+
+    function isDigits(text) {
+      if (text.length === 0) return false;
+      for (const ch of text) {
+        if (ch < '0' || ch > '9') return false;
+      }
+      return true;
+    }
+
+    function pad(n) {
+      return String(n).padStart(2, '0');
+    }
+
+    function format(sec) {
+      const safe = Math.max(0, Math.floor(sec));
+      const m = Math.floor(safe / 60);
+      const s = safe % 60;
+      return `${pad(m)}:${pad(s)}`;
+    }
+
+    function parse(text) {
+      const raw = String(text).trim();
+      if (!raw) return 0;
+
+      if (raw.indexOf(':') !== -1) {
+        const parts = raw.split(':');
+        if (parts.length !== 2) return 0;
+
+        const minutesRaw = parts[0].trim();
+        const secondsRaw = parts[1].trim();
+        if (!isDigits(minutesRaw) || !isDigits(secondsRaw)) return 0;
+
+        const minutes = Number(minutesRaw);
+        const seconds = Number(secondsRaw);
+        if (seconds > 59) return 0;
+
+        return (minutes * 60) + seconds;
+      }
+
+      if (!isDigits(raw)) return 0;
+      return Number(raw) * 60;
+    }
+
+    function render() {
+      if (!isEditing) {
+        timerEl.textContent = format(remaining);
+      }
+    }
+
+    function updateIcon() {
+      btn.setAttribute('aria-label', running ? 'Pause' : 'Start');
+      icon.innerHTML = running
+        ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z" />'
+        : '<path d="M8 5.5L19 12L8 18.5V5.5Z" />';
+    }
+
+    function stop() {
+      running = false;
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+      updateIcon();
+    }
+
+    function start() {
+      if (running) {
+        stop();
+        return;
+      }
+
+      if (remaining <= 0) {
+        remaining = total;
+      }
+
+      running = true;
+      updateIcon();
+      interval = setInterval(tick, 1000);
+    }
+
+    function tick() {
+      if (remaining <= 0) {
+        stop();
+        render();
+        return;
+      }
+
+      remaining -= 1;
+      if (!isEditing) {
+        render();
+      }
+
+      if (remaining <= 0) {
+        stop();
+        render();
+      }
+    }
+
+    function commitAndOptionallyStart(shouldStart) {
+      const parsed = parse(timerEl.textContent);
+      if (parsed > 0) {
+        total = parsed;
+        remaining = parsed;
+      }
+
+      isEditing = false;
+      render();
+
+      if (shouldStart && parsed > 0 && !running) {
+        start();
+      }
+    }
+
+    function cancelEdit() {
+      isEditing = false;
+      render();
+    }
+
+    function selectAll() {
+      requestAnimationFrame(() => {
+        const range = document.createRange();
+        range.selectNodeContents(timerEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+    }
+
+    timerEl.addEventListener('focus', () => {
+      isEditing = true;
+      selectAll();
+    });
+
+    timerEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        skipBlurCommit = true;
+        commitAndOptionallyStart(true);
+        timerEl.blur();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        skipBlurCommit = true;
+        cancelEdit();
+        timerEl.blur();
+      }
+    });
+
+        timerEl.addEventListener('blur', () => {
+      if (skipBlurCommit) {
+        skipBlurCommit = false;
+      } else {
+        cancelEdit();
+      }
+
+      // Clear any text selection + caret
+      const sel = window.getSelection();
+      if (sel) sel.removeAllRanges();
+    });
+
+    timerEl.addEventListener('input', () => {
+      const text = timerEl.textContent.replace(/[^0-9:]/g, '');
+      timerEl.textContent = text;
+
+      const range = document.createRange();
+      range.selectNodeContents(timerEl);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+
+    timerEl.addEventListener('paste', () => {
+      setTimeout(() => {
+        timerEl.textContent = timerEl.textContent.replace(/[^0-9:]/g, '');
+      }, 0);
+    });
+
+    btn.addEventListener('click', start);
+
+    render();
+    updateIcon();
+  </script>
 </body>
 </html>
