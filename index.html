@@ -17,14 +17,12 @@
 
     html, body {
       margin: 0;
+      padding: 0;
       background: transparent;
       font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    body {
-      display: inline-block;
-      padding: 0;
-    }
+    body { display: inline-block; overflow: hidden; }
 
     .card {
       display: inline-flex;
@@ -35,13 +33,15 @@
       border-radius: 12px;
       padding: 6px;
       box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+      width: fit-content;
     }
 
     .timer {
+      width: auto;
       min-width: 5.8ch;
       border: 1px solid transparent;
       border-radius: 8px;
-      padding: 2px 4px;
+      padding: 2px 6px;
       text-align: center;
       font: inherit;
       font-size: 18px;
@@ -54,12 +54,10 @@
       font-variant-numeric: tabular-nums;
       letter-spacing: -0.03em;
       min-height: 28px;
+      white-space: nowrap;
     }
 
-    .timer:focus {
-      background: var(--focus);
-      border-color: var(--border);
-    }
+    .timer:focus { background: var(--focus); border-color: var(--border); }
 
     button {
       border: none;
@@ -76,21 +74,14 @@
       flex: 0 0 auto;
     }
 
-    button:active {
-      transform: translateY(1px);
-    }
+    button:active { transform: translateY(1px); }
 
-    button:focus-visible,
-    .timer:focus-visible {
+    button:focus-visible, .timer:focus-visible {
       outline: 2px solid rgba(17, 17, 17, 0.18);
       outline-offset: 2px;
     }
 
-    svg {
-      width: 12px;
-      height: 12px;
-      display: block;
-    }
+    svg { width: 12px; height: 12px; display: block; }
   </style>
 </head>
 <body>
@@ -115,30 +106,40 @@
     let interval = null;
     let isEditing = false;
     let skipBlurCommit = false;
+    let editSnapshot = '10:00';
 
-    // URL params: ?hours=1&days=1
     const params = new URLSearchParams(window.location.search);
 
-    function paramOn(keys) {
-      return keys.some(k => {
-        const v = params.get(k);
-        return v === '1' || v === 'true';
-      });
+    function getNum(keys) {
+      for (const k of keys) {
+        if (params.has(k)) {
+          const v = Number(params.get(k));
+          if (Number.isFinite(v) && v >= 0) return v;
+          return 1; // presence-only => 1
+        }
+      }
+      return 0;
     }
 
-    const showDays = paramOn(['days','day','d']);
-    const showHours = showDays || paramOn(['hours','hour','h']);
+    const dVal = getNum(['days','day','d']);
+    const hVal = getNum(['hours','hour','h']);
+    const mVal = getNum(['minutes','mins','min','m']);
+    const sVal = getNum(['seconds','secs','sec','s']);
+
+    // Determine display mode by highest provided unit
+    const mode = dVal > 0 ? 'd' : (hVal > 0 ? 'h' : (mVal > 0 || sVal > 0 ? 'm' : 'default'));
 
     function isDigits(text) {
       if (text.length === 0) return false;
-      for (const ch of text) {
-        if (ch < '0' || ch > '9') return false;
-      }
+      for (const ch of text) if (ch < '0' || ch > '9') return false;
       return true;
     }
 
-    function pad(n) {
-      return String(n).padStart(2, '0');
+    function pad(n) { return String(n).padStart(2, '0'); }
+
+    function updateWidth(text) {
+      const len = Math.max(5.8, String(text).length + 0.5);
+      timerEl.style.width = `${len}ch`;
     }
 
     function format(sec) {
@@ -148,18 +149,19 @@
       const minutes = Math.floor((safe % 3600) / 60);
       const seconds = safe % 60;
 
-      if (showDays) {
+      if (mode === 'd') {
         return `${pad(days)}:${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
       }
 
-      if (showHours) {
+      if (mode === 'h') {
         const totalHours = Math.floor(safe / 3600);
         return `${pad(totalHours)}:${pad(minutes)}:${pad(seconds)}`;
       }
 
+      // minutes+seconds (default and m/s modes)
       const totalMinutes = Math.floor(safe / 60);
       return `${pad(totalMinutes)}:${pad(seconds)}`;
-        }
+    }
 
     function parse(text) {
       const raw = String(text).trim();
@@ -168,15 +170,12 @@
       if (raw.indexOf(':') !== -1) {
         const parts = raw.split(':');
         if (parts.length !== 2) return 0;
-
         const minutesRaw = parts[0].trim();
         const secondsRaw = parts[1].trim();
         if (!isDigits(minutesRaw) || !isDigits(secondsRaw)) return 0;
-
         const minutes = Number(minutesRaw);
         const seconds = Number(secondsRaw);
         if (seconds > 59) return 0;
-
         return (minutes * 60) + seconds;
       }
 
@@ -186,7 +185,9 @@
 
     function render() {
       if (!isEditing) {
-        timerEl.textContent = format(remaining);
+        const text = format(remaining);
+        timerEl.textContent = text;
+        updateWidth(text);
       }
     }
 
@@ -199,63 +200,34 @@
 
     function stop() {
       running = false;
-      if (interval) {
-        clearInterval(interval);
-        interval = null;
-      }
+      if (interval) { clearInterval(interval); interval = null; }
       updateIcon();
     }
 
     function start() {
-      if (running) {
-        stop();
-        return;
-      }
-
-      if (remaining <= 0) {
-        remaining = total;
-      }
-
-      running = true;
-      updateIcon();
-      interval = setInterval(tick, 1000);
+      if (running) { stop(); return; }
+      if (remaining <= 0) remaining = total;
+      running = true; updateIcon(); interval = setInterval(tick, 1000);
     }
 
     function tick() {
-      if (remaining <= 0) {
-        stop();
-        render();
-        return;
-      }
-
+      if (remaining <= 0) { stop(); render(); return; }
       remaining -= 1;
-      if (!isEditing) {
-        render();
-      }
-
-      if (remaining <= 0) {
-        stop();
-        render();
-      }
+      if (!isEditing) render();
+      if (remaining <= 0) { stop(); render(); }
     }
 
     function commitAndOptionallyStart(shouldStart) {
       const parsed = parse(timerEl.textContent);
-      if (parsed > 0) {
-        total = parsed;
-        remaining = parsed;
-      }
-
-      isEditing = false;
-      render();
-
-      if (shouldStart && parsed > 0 && !running) {
-        start();
-      }
+      if (parsed > 0) { total = parsed; remaining = parsed; }
+      isEditing = false; render();
+      if (shouldStart && parsed > 0 && !running) start();
     }
 
     function cancelEdit() {
       isEditing = false;
+      timerEl.textContent = editSnapshot;
+      updateWidth(editSnapshot);
       render();
     }
 
@@ -264,13 +236,15 @@
         const range = document.createRange();
         range.selectNodeContents(timerEl);
         const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
+        sel.removeAllRanges(); sel.addRange(range);
       });
     }
 
     timerEl.addEventListener('focus', () => {
       isEditing = true;
+      editSnapshot = format(remaining);
+      timerEl.textContent = editSnapshot;
+      updateWidth(editSnapshot);
       selectAll();
     });
 
@@ -282,7 +256,6 @@
         timerEl.blur();
         return;
       }
-
       if (e.key === 'Escape') {
         e.preventDefault();
         skipBlurCommit = true;
@@ -292,39 +265,38 @@
     });
 
     timerEl.addEventListener('blur', () => {
-      if (skipBlurCommit) {
-        skipBlurCommit = false;
-      } else {
-        cancelEdit();
+      if (skipBlurCommit) skipBlurCommit = false; else cancelEdit();
+      const sel = window.getSelection(); if (sel) sel.removeAllRanges();
+    });
+
+    // Handle typing without breaking backspace
+    timerEl.addEventListener('keydown', (e) => {
+      if (e.key.length === 1 && !/[0-9:]/.test(e.key)) {
+        e.preventDefault();
       }
-
-      const sel = window.getSelection();
-      if (sel) sel.removeAllRanges();
     });
 
-    timerEl.addEventListener('input', () => {
-      const text = timerEl.textContent.replace(/[^0-9:]/g, '');
-      timerEl.textContent = text;
-
-      const range = document.createRange();
-      range.selectNodeContents(timerEl);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-    });
-
-    timerEl.addEventListener('paste', () => {
-      setTimeout(() => {
-        timerEl.textContent = timerEl.textContent.replace(/[^0-9:]/g, '');
-      }, 0);
+    timerEl.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      const cleaned = text.replace(/[^0-9:]/g, '');
+      document.execCommand('insertText', false, cleaned);
+      updateWidth(timerEl.textContent);
     });
 
     btn.addEventListener('click', start);
 
-    render();
+    // Build initial total from params (independent values)
+    const initialSeconds = (dVal * 86400) + (hVal * 3600) + (mVal * 60) + sVal;
+    if (initialSeconds > 0) {
+      total = initialSeconds;
+      remaining = initialSeconds;
+    }
+
+    const initialText = format(remaining);
+    timerEl.textContent = initialText;
+    updateWidth(initialText);
     updateIcon();
   </script>
 </body>
 </html>
-
