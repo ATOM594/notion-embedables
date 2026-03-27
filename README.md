@@ -16,6 +16,7 @@ A customizable countdown timer that can be embedded in Notion or can be used in 
   - Days:Hours:Minutes:Seconds: `2:01:30:45` (2 days 1 hour 30 minutes 45 seconds)
 - Press **Enter** to start the timer
 - Press **Escape** or click outside the timer to cancel editing
+- **Audio Chime**: Plays a sound when the timer completes
 
 ### Usage
 
